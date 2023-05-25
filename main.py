@@ -186,6 +186,9 @@ def call_promo(text , guest_id):
 		print("-->> что-то пошло не так с отправкой уведомления промоутеру" )
 	else:
 		promo_id = result[0][1]
+		if promo_id == 1:
+			return
+
 		with sql.connect("bot.sql") as con:
 			cur = con.cursor()
 			cur.execute("SELECT * FROM promo WHERE id = "+str(promo_id))
