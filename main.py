@@ -20,7 +20,11 @@ def main(message):
 	global promo_id
 
 	#ловим id промоутера из ссылки и проверив на корректность добавляем
-	raw_promo_id = message.text.split(' ')[1]
+	if len(message.text.split(' ')) >=2:
+		raw_promo_id = message.text.split(' ')[1]
+	else:
+		raw_promo_id = "1"
+
 	if (raw_promo_id.isdigit()):
 		promo_id = int(raw_promo_id)
 		bot.send_message(message.chat.id, "Добро пожаловать в бот Майами Клуб!\nДавайте пройдем небольшую регистрацию - напишите свое имя.")
@@ -35,6 +39,8 @@ def main(message):
 		elif raw_promo_id[0] == "p":
 			bot.send_message(message.chat.id, "Вы были приглашены на роль промоутера, введите свое имя и вам будет выдана персональная ссылка для приглашения гостей.")
 			bot.register_next_step_handler(message,register_promo)
+		elif raw_promo_id[0] == "t":
+			return
 		else:
 			#при битой ссылке гостя получит мнимый промоутер
 			bot.send_message(message.chat.id, "Добро пожаловать в бот Майами Клуб!\nДавайте пройдем небольшую регистрацию - напишите свое имя.")
@@ -47,12 +53,42 @@ def main(message):
 # 	bot.send_message(message.chat.id,"Вы ввели что-то не то, пожалуйста начните заново начиная с номера телефона ")
 # 	bot.register_next_step_handler(message , get_phone)
 
+@bot.message_handler(commands = ['stat'])
+def main(message):
+	with sql.connect("bot.sql") as con:
+		cur = con.cursor()
+		cur.execute("SELECT * FROM main_promo WHERE chat_id = "+str(message.chat.id))
+		result = cur.fetchall()
+
+	if len(result) == 0:
+		bot.send_message(message.chat.id, "Вы должны быть Генеральным промоутером чтобы использовать эту команду")
+	else:
+		with sql.connect("bot.sql") as con:
+			cur = con.cursor()
+			cur.execute("SELECT promo.name , promo.id  FROM promo JOIN promo_users ON promo.id = promo_users.promo_id WHERE promo_users.date BETWEEN datetime('now', '-6 days') AND datetime('now', 'localtime')")
+			promos = cur.fetchall()
+
+		invite_list = {}
+		for el in promos:
+			if not el[0] in invite_list.keys():
+				invite_list[el[0]] = 1
+			else:
+				invite_list[el[0]] += 1
+
+		text = "За последнюю неделю промоутеры привели "+str(len(promos))+" зарегестрировавшихся гостей, из них:"
+		for key, value in invite_list.items():
+			text += "\n"+key +": "+str(value)
+		bot.send_message(message.chat.id, text)
+		
+
+
+
 
 def get_name(message):
 	global guest_name
 	guest_name = message.text
 
-	if not set(".,:;!_*-+()/#¤%&)").isdisjoint(guest_name):
+	if not set(".,:;!_*-+()/#¤%&").isdisjoint(guest_name):
 		bot.send_message(message.chat.id, "Имя не должно содержать спец символов, попробуйте еще раз")
 		bot.register_next_step_handler(message, get_name)
 	else:
@@ -84,7 +120,6 @@ def get_phone(message):
 	except:
 		bot.send_message(message.chat.id, "Вы ввели телефон неправильно, попробуйте еще раз ")
 		bot.register_next_step_handler(message, get_phone)
-
 
 def get_date(message):
 	global guest_name , phone , date , promo_id
@@ -129,7 +164,6 @@ def get_date(message):
 			except:
 				wrong_date(message)
 
-
 		else:
 			wrong_date(message)
 
@@ -169,7 +203,6 @@ def call_promo(text , guest_id):
 
 			bot.send_message(promo_chat,text+user_name)
 
-
 def call_admins(text , guest_id):
 	with sql.connect("bot.sql") as con:
 		cur = con.cursor()
@@ -195,8 +228,7 @@ def call_admins(text , guest_id):
 			for admin in result3:
 				bot.send_message(admin[1],text+"от промоутера "+promo_name)
 
-
-
+#guest_id - строка
 def who_just_came(message,guest_id):
 	global promo_id
 	with sql.connect("bot.sql") as con:
@@ -235,7 +267,7 @@ def register_admin(message):
 	with sql.connect("bot.sql") as con:
 		cur = con.cursor()
 		cur.execute("INSERT INTO main_promo (chat_id) VALUES ('"+str(message.chat.id)+"');")
-	bot.send_message(message.chat.id, "Вы были зарегестрированы как Генеральный промоутер\nВам будут приходить уведомления обо всех событиях гостей и промоутеров, а так же вам доступна команда /статистика")
+	bot.send_message(message.chat.id, "Вы были зарегестрированы как Генеральный промоутер\nВам будут приходить уведомления обо всех событиях гостей и промоутеров, а так же вам доступна команда /stat")
 
 def register_promo(message):
 	name = message.text
