@@ -40,31 +40,51 @@ def main(message):
 			bot.send_message(message.chat.id, "Добро пожаловать в бот Майами Клуб!\nДавайте пройдем небольшую регистрацию - напишите свое имя.")
 			bot.register_next_step_handler(message,get_name)
 
+
+# #отлов дебиков которые неправильно ввели телефон
+# @bot.message_handler()
+# def info(message):
+# 	bot.send_message(message.chat.id,"Вы ввели что-то не то, пожалуйста начните заново начиная с номера телефона ")
+# 	bot.register_next_step_handler(message , get_phone)
+
+
 def get_name(message):
 	global guest_name
 	guest_name = message.text
 
+	if not set(".,:;!_*-+()/#¤%&)").isdisjoint(guest_name):
+		bot.send_message(message.chat.id, "Имя не должно содержать спец символов, попробуйте еще раз")
+		bot.register_next_step_handler(message, get_name)
+	else:
+		markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+		markup.add(telebot.types.KeyboardButton(text='Отправить номер телефона', request_contact=True))
+		bot.send_message(message.chat.id, "Теперь отправьте мне свой номер телефона с помощью кнопки ниже.", reply_markup=markup)
 
-	markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-	markup.add(telebot.types.KeyboardButton(text='Отправить номер телефона', request_contact=True))
-	bot.send_message(message.chat.id, "Теперь отправьте мне свой номер телефона с помощью кнопки ниже.", reply_markup=markup)
-
-	bot.register_next_step_handler(message, get_phone)
+		bot.register_next_step_handler(message, get_phone)
 
 def get_phone(message):
 	global phone
-	phone = message.contact.phone_number
 
-	with sql.connect("bot.sql") as con:
-		cur = con.cursor()
-		cur.execute("SELECT * FROM users WHERE phone = "+phone)
-		result = cur.fetchall()
+	try:
+		phone = message.contact.phone_number
+		if phone == "":
+			bot.send_message(message.chat.id, "номер телефона должен быть введен через кнопку")
+			bot.register_next_step_handler(message, get_phone)
+		else:
+			with sql.connect("bot.sql") as con:
+				cur = con.cursor()
+				cur.execute("SELECT * FROM users WHERE phone = "+phone)
+				result = cur.fetchall()
 
-	if len(result) != 0:
-		bot.send_message(message.chat.id, "данный номер телефона уже зарегестрирован")
-	else:
-		bot.send_message(message.chat.id, "введите свою дату рождения в формате дд.мм.гггг")
-		bot.register_next_step_handler(message, get_date)
+			if len(result) != 0:
+				bot.send_message(message.chat.id, "данный номер телефона уже зарегестрирован")
+			else:
+				bot.send_message(message.chat.id, "введите свою дату рождения в формате дд.мм.гггг")
+				bot.register_next_step_handler(message, get_date)
+	except:
+		bot.send_message(message.chat.id, "Вы ввели телефон неправильно, попробуйте еще раз ")
+		bot.register_next_step_handler(message, get_phone)
+
 
 def get_date(message):
 	global guest_name , phone , date , promo_id
@@ -96,8 +116,8 @@ def get_date(message):
 						cur.execute("INSERT INTO promo_users (promo_id , user_id ) VALUES ('"+str(promo_id)+"','"+str(cur_id[0][0])+"')")
 
 					#отправляем уведомление о регистрации сотрудникам
-					call_admins("зарегестрирован гость" , cur_id[0][0])
-					call_promo("зарегестрирован гость" , cur_id[0][0])
+					call_promo("По вашей ссылке зарегестрирован гость " , cur_id[0][0])
+					call_admins("Зарегестрирован гость " , cur_id[0][0])
 
 					#после добавления БД оставить в QR коде только ссылку на бота с доб инфой его id в таблице
 					qr_data = f"https://t.me/MiamiRegBot?start=x"+str(cur_id[0][0])
@@ -122,21 +142,91 @@ def wrong_date(message):
 
 #тут посмотрим по БД кому конкретно придут уведомления
 def call_promo(text , guest_id):
-	return
+	global promo_id
+	with sql.connect("bot.sql") as con:
+		cur = con.cursor()
+		cur.execute("SELECT * FROM promo_users WHERE user_id = "+str(guest_id))
+		result = cur.fetchall()
+
+	if len(result)!=1:
+		print("-->> что-то пошло не так с отправкой уведомления промоутеру" )
+	else:
+		promo_id = result[0][1]
+		with sql.connect("bot.sql") as con:
+			cur = con.cursor()
+			cur.execute("SELECT * FROM promo WHERE id = "+str(promo_id))
+			result2 = cur.fetchall()
+		if len(result2) !=1:
+			print("-->> что-то пошло не так с отправкой уведомления промоутеру" )
+		else:
+			promo_chat = result2[0][1]
+			with sql.connect("bot.sql") as con:
+				cur = con.cursor()
+				cur.execute("SELECT * FROM users WHERE id = "+str(guest_id))
+				result3 = cur.fetchall()
+
+			user_name = result3[0][2]
+
+			bot.send_message(promo_chat,text+user_name)
+
 
 def call_admins(text , guest_id):
-	return
+	with sql.connect("bot.sql") as con:
+		cur = con.cursor()
+		cur.execute("SELECT * FROM promo_users WHERE user_id = "+str(guest_id))
+		result = cur.fetchall()
+	if len(result)!=1:
+		print("-->> что-то пошло не так с отправкой уведомления админу" )
+	else:
+		promo_id = result[0][1]
+		with sql.connect("bot.sql") as con:
+			cur = con.cursor()
+			cur.execute("SELECT * FROM promo WHERE id = "+str(promo_id))
+			result2 = cur.fetchall()
+
+		if len(result2) !=1:
+			print("-->> что-то пошло не так с отправкой уведомления админу" )
+		else:
+			promo_name = result2[0][2]
+			with sql.connect("bot.sql") as con:
+				cur = con.cursor()
+				cur.execute("SELECT * FROM main_promo")
+				result3 = cur.fetchall()
+			for admin in result3:
+				bot.send_message(admin[1],text+"от промоутера "+promo_name)
+
+
 
 def who_just_came(message,guest_id):
+	global promo_id
 	with sql.connect("bot.sql") as con:
 		cur = con.cursor()
 		cur.execute("SELECT * FROM users WHERE id = "+guest_id)
 		result = cur.fetchall()
 		if len(result) == 1:
-			text = "Имя: "+result[0][2]+"\nПриглашён промоутером: "+str(result[0][5])
+			promo_id = result[0][5]
+
+			with sql.connect("bot.sql") as con:
+				cur = con.cursor()
+				cur.execute("SELECT * FROM promo_users WHERE user_id = "+guest_id)
+				result2 = cur.fetchall()
+
+			if len(result2) == 1:
+				with sql.connect("bot.sql") as con:
+					cur = con.cursor()
+					cur.execute("SELECT * FROM promo WHERE id = "+str(result2[0][1]))
+					result3 = cur.fetchall()
+
+					if len(result3)==1:
+						promo_name = result3[0][2]				
+
+
+			text = "Имя: "+result[0][2]+"\nПриглашён промоутером: "+promo_name
 			bot.send_message(message.chat.id, text)
 
 			#зовем админа и его промоутера
+			call_promo("Пришел приглашенный вами гость ",result[0][0])
+			call_admins("Пришел гость ",result[0][0])
 
 		elif len(result) == 0:
 			bot.send_message(message.chat.id, "Данные о госте отсутствуют")
@@ -146,8 +236,6 @@ def register_admin(message):
 		cur = con.cursor()
 		cur.execute("INSERT INTO main_promo (chat_id) VALUES ('"+str(message.chat.id)+"');")
 	bot.send_message(message.chat.id, "Вы были зарегестрированы как Генеральный промоутер\nВам будут приходить уведомления обо всех событиях гостей и промоутеров, а так же вам доступна команда /статистика")
-
-
 
 def register_promo(message):
 	name = message.text
